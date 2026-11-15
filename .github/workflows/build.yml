@@ -9,9 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Unzip project
-        run: unzip -q GameDeals-Android-Project.zip
+        run: |
+          f="$(git log -1 --name-only --format= --diff-filter=AM -- '*.zip' | head -1)"
+          echo "Using: $f"
+          test -n "$f"
+          unzip -q -o "$f"
+          ls
 
       - uses: actions/setup-java@v4
         with:
@@ -22,11 +29,17 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build APK
+      - name: Build APK and AAB
         working-directory: GameDeals
+        env:
+          KSPW: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           set -o pipefail
-          gradle assembleRelease --console=plain -PRAWG_API_KEY="${{ secrets.RAWG_API_KEY }}" 2>&1 | tee build.log
+          gradle assembleRelease bundleRelease --console=plain \
+            -PKEYSTORE_FILE="$GITHUB_WORKSPACE/keystore.jks" \
+            -PKEYSTORE_PASSWORD="$KSPW" \
+            -PVERSION_CODE="${{ github.run_number }}" \
+            -PRAWG_API_KEY="${{ secrets.RAWG_API_KEY }}" 2>&1 | tee build.log
 
       - name: Show errors
         if: failure()
@@ -36,5 +49,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: GameDeals-apk
-          path: GameDeals/app/build/outputs/apk/release/*.apk
+          name: GameDeals-release
+          path: |
+            GameDeals/app/build/outputs/apk/release/*.apk
+            GameDeals/app/build/outputs/bundle/release/*.aab
